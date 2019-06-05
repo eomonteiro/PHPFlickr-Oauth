@@ -25,8 +25,8 @@ if ( !class_exists('phpFlickr') ) {
         var $secret;
 
         var $rest_endpoint = 'https://api.flickr.com/services/rest/';
-        var $upload_endpoint = 'https://api.flickr.com/services/upload/';
-        var $replace_endpoint = 'https://api.flickr.com/services/replace/';
+        var $upload_endpoint = 'https://up.flickr.com/services/upload/';
+        var $replace_endpoint = 'https://up.flickr.com/services/replace/';
         var $oauthrequest_endpoint = 'https://www.flickr.com/services/oauth/request_token/';
         var $oauthauthorize_endpoint = 'https://www.flickr.com/services/oauth/authorize/';
         var $oauthaccesstoken_endpoint = 'https://www.flickr.com/services/oauth/access_token/';
@@ -74,6 +74,7 @@ if ( !class_exists('phpFlickr') ) {
                 $curl = curl_init($url);
                 curl_setopt($curl, CURLOPT_POST, true);
                 curl_setopt($curl, CURLOPT_POSTFIELDS, $data);
+				curl_setopt( $curl, CURLOPT_SSL_VERIFYPEER, false );	
                 curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
                 $response = curl_exec($curl);
                 curl_close($curl);
@@ -99,6 +100,7 @@ if ( !class_exists('phpFlickr') ) {
                 fputs ($fp,"Content-length: ".strlen($data)."\n");
                 fputs ($fp,"Connection: close\r\n\r\n");
                 fputs ($fp,$data . "\n\n");
+
                 $response = "";
                 while(!feof($fp)) {
                     $response .= fgets($fp, 1024);
@@ -213,7 +215,7 @@ if ( !class_exists('phpFlickr') ) {
             if(!isset($_SESSION['oauth_tokentmp']) || !isset($_SESSION['oauth_secrettmp']) ||
             $_SESSION['oauth_tokentmp'] == '' ||  $_SESSION['oauth_secrettmp'] == '')
             {
-                $callback = 'http://'.$_SERVER["HTTP_HOST"].$_SERVER['REQUEST_URI'];
+                $callback = 'https://'.$_SERVER["HTTP_HOST"].$_SERVER['REQUEST_URI'];
                 $this->getRequestToken($callback);
                 return false;
             }
@@ -250,7 +252,7 @@ if ( !class_exists('phpFlickr') ) {
             $_SESSION['oauth_tokentmp'] = $response['oauth_token'];
             $_SESSION['oauth_secrettmp'] = $response['oauth_token_secret'];
 
-            header("location: ".$this->oauthauthorize_endpoint.'?oauth_token='.$response['oauth_token']."&perms=${perms}");
+            header("location: ".$this->oauthauthorize_endpoint.'?oauth_token='.$response['oauth_token']."&perms=delete");
 
             $this->error_code = '';
             $this->error_msg = '';
@@ -381,9 +383,9 @@ if ( !class_exists('phpFlickr') ) {
             }
 
             if ($size == "original") {
-                $url = "http://farm" . $photo['farm'] . ".static.flickr.com/" . $photo['server'] . "/" . $photo['id'] . "_" . $photo['originalsecret'] . "_o" . "." . $photo['originalformat'];
+                $url = "https://farm" . $photo['farm'] . ".static.flickr.com/" . $photo['server'] . "/" . $photo['id'] . "_" . $photo['originalsecret'] . "_o" . "." . $photo['originalformat'];
             } else {
-                $url = "http://farm" . $photo['farm'] . ".static.flickr.com/" . $photo['server'] . "/" . $photo['id'] . "_" . $photo['secret'] . $sizes[$size] . ".jpg";
+                $url = "https://farm" . $photo['farm'] . ".static.flickr.com/" . $photo['server'] . "/" . $photo['id'] . "_" . $photo['secret'] . $sizes[$size] . ".jpg";
             }
             return $url;
         }
@@ -393,9 +395,9 @@ if ( !class_exists('phpFlickr') ) {
              * website provides, but isn't available in the API. I'm providing this service as long
              * as it doesn't flood my server with requests and crash it all the time.
              */
-            return unserialize(file_get_contents('http://phpflickr.com/geodata/?format=php&lat=' . $lat . '&lon=' . $lon));
-        }
-
+            return unserialize(file_get_contents('https://phpflickr.com/geodata/?format=php&lat=' . $lat . '&lon=' . $lon));
+        }		
+		
         function sync_upload ($photo, $title = null, $description = null, $tags = null, $is_public = null, $is_friend = null, $is_family = null) {
             if ( function_exists('curl_init') ) {
                 // Has curl. Use it!
@@ -419,20 +421,34 @@ if ( !class_exists('phpFlickr') ) {
                 }
 
                 $args = $this->getArgOauth($this->upload_endpoint, $args);
+				
 
                 $photo = realpath($photo);
-                $args['photo'] = '@' . $photo;
+			
+                 $args['photo'] = new CURLFile($photo);
 
-                $curl = curl_init($this->upload_endpoint);
-                curl_setopt($curl, CURLOPT_POST, true);
-                curl_setopt($curl, CURLOPT_POSTFIELDS, $args);
+                $curl = curl_init($this->upload_endpoint); 
+				curl_setopt($curl, CURLOPT_POST, true);
+				curl_setopt($curl, CURLOPT_SAFE_UPLOAD, false);
+                curl_setopt($curl, CURLOPT_POSTFIELDS, $args);	
+                curl_setopt( $curl, CURLOPT_SSL_VERIFYPEER, false );				
                 curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+				
                 $response = curl_exec($curl);
                 $this->response = $response;
+				/*//print_r($this->response);
+			//	print_r($curl);
+				if(curl_errno($curl))
+				{
+					echo 'Curl error: ' . curl_error($curl);
+				}*/
+				//echo 'Curl error: ' . curl_error($curl);
                 curl_close($curl);
 
                 $rsp = explode("\n", $response);
+				
                 foreach ($rsp as $line) {
+					
                     if (preg_match('|<err code="([0-9]+)" msg="(.*)"|', $line, $match)) {
                         if ($this->die_on_error)
                             die("The Flickr API returned the following error: #{$match[1]} - {$match[2]}");
@@ -485,6 +501,7 @@ if ( !class_exists('phpFlickr') ) {
                 $curl = curl_init($this->upload_endpoint);
                 curl_setopt($curl, CURLOPT_POST, true);
                 curl_setopt($curl, CURLOPT_POSTFIELDS, $args);
+				curl_setopt( $curl, CURLOPT_SSL_VERIFYPEER, false );	
                 curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
                 $response = curl_exec($curl);
                 $this->response = $response;
@@ -492,6 +509,7 @@ if ( !class_exists('phpFlickr') ) {
 
                 $rsp = explode("\n", $response);
                 foreach ($rsp as $line) {
+					
                     if (preg_match('|<err code="([0-9]+)" msg="(.*)"|', $line, $match)) {
                         if ($this->die_on_error)
                             die("The Flickr API returned the following error: #{$match[1]} - {$match[2]}");
@@ -542,6 +560,7 @@ if ( !class_exists('phpFlickr') ) {
                 $curl = curl_init($this->replace_endpoint);
                 curl_setopt($curl, CURLOPT_POST, true);
                 curl_setopt($curl, CURLOPT_POSTFIELDS, $args);
+				curl_setopt( $curl, CURLOPT_SSL_VERIFYPEER, false );	
                 curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
                 $response = curl_exec($curl);
                 $this->response = $response;
